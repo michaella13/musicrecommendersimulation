@@ -1,3 +1,4 @@
+import csv
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
@@ -50,24 +51,91 @@ def load_songs(csv_path: str) -> List[Dict]:
     Loads songs from a CSV file.
     Required by src/main.py
     """
-    # TODO: Implement CSV loading logic
     print(f"Loading songs from {csv_path}...")
-    return []
+    songs = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            row["id"] = int(row["id"])
+            row["energy"] = float(row["energy"])
+            row["tempo_bpm"] = float(row["tempo_bpm"])
+            row["valence"] = float(row["valence"])
+            row["danceability"] = float(row["danceability"])
+            row["acousticness"] = float(row["acousticness"])
+            songs.append(row)
+    print(f"Loaded songs: {len(songs)}")
+    return songs
+
+# Mood clusters for partial credit. Moods absent from all clusters (e.g. "gritty",
+# "nostalgic") score 0 unless they are an exact match.
+MOOD_CLUSTERS = [
+    {"chill", "relaxed", "peaceful", "laid-back"},
+    {"happy", "euphoric", "energetic"},
+    {"intense", "aggressive"},
+    {"moody", "melancholic"},
+    {"focused", "confident"},
+]
 
 def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     """
     Scores a single song against user preferences.
     Required by recommend_songs() and src/main.py
-    """
-    # TODO: Implement scoring logic using your Algorithm Recipe from Phase 2.
-    # Expected return format: (score, reasons)
-    return []
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
+    user_prefs keys: mood, genre, energy, valence, tempo_bpm, danceability, acousticness
+    Returns: (total_score, reasons)  — max possible score is 15.5 pts
+    """
+    score = 0.0
+    reasons = []
+
+    # Mood: 5 pts exact, 2.5 pts same cluster
+    user_mood = user_prefs["mood"]
+    song_mood = song["mood"]
+    if user_mood == song_mood:
+        score += 5.0
+        reasons.append("mood match (+5.0)")
+    else:
+        for cluster in MOOD_CLUSTERS:
+            if user_mood in cluster and song_mood in cluster:
+                score += 2.5
+                reasons.append(f"similar mood — {song_mood} ≈ {user_mood} (+2.5)")
+                break
+
+    # Genre: 3 pts exact
+    if user_prefs["genre"] == song["genre"]:
+        score += 3.0
+        reasons.append("genre match (+3.0)")
+
+    # Continuous features: weight × (1 - |reference - candidate| / scale)
+    # tempo_bpm is divided by 200 to normalise its BPM range to [0, 1].
+    continuous = [
+        ("energy",       3.0, user_prefs["energy"],       song["energy"],       1.0),
+        ("valence",      2.0, user_prefs["valence"],       song["valence"],      1.0),
+        ("tempo_bpm",    1.0, user_prefs["tempo_bpm"],     song["tempo_bpm"],    200.0),
+        ("danceability", 1.0, user_prefs["danceability"],  song["danceability"], 1.0),
+        ("acousticness", 0.5, user_prefs["acousticness"],  song["acousticness"], 1.0),
+    ]
+    for feature, weight, ref, candidate, scale in continuous:
+        pts = weight * (1 - abs(ref - candidate) / scale)
+        score += pts
+        reasons.append(f"{feature} (+{pts:.2f})")
+
+    return round(score, 4), reasons
+
+def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, List[str]]]:
     """
     Functional implementation of the recommendation logic.
     Required by src/main.py
+
+    Returns the top k songs as (song_dict, score, reasons) tuples,
+    sorted from highest to lowest score.
     """
-    # TODO: Implement scoring and ranking logic
-    # Expected return format: (song_dict, score, explanation)
-    return []
+    scored = [
+        (song, score, reasons)
+        for song in songs
+        for score, reasons in [score_song(user_prefs, song)]
+    ]
+
+    # sorted() is used instead of .sort() because scored is a fresh list built
+    # from a list comprehension — sorted() returns a new sorted list without
+    # modifying the original, which keeps the function free of side effects.
+    return sorted(scored, key=lambda x: x[1], reverse=True)[:k]

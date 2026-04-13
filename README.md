@@ -19,15 +19,13 @@ Replace this paragraph with your own summary of what your version does.
 
 Explain your design in plain language.
 
-Some prompts to answer:
+Each song is described by seven features: two categorical labels (genre and mood) and five decimal values between 0 and 1 — energy, valence, danceability, acousticness — plus tempo in BPM. The user profile stores a reference song or a set of target preferences across all seven features.
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+Scoring follows a mood-first weighting strategy. Mood is the highest-weighted attribute (5 pts for an exact match, 2.5 pts for a semantically similar mood cluster such as chill/relaxed/peaceful) because getting the emotional feel wrong is the most noticeable kind of bad recommendation. Genre is the next strongest signal (3 pts for an exact match). The five continuous features each contribute a partial score based on proximity: `weight × (1 - |reference_value - candidate_value|)`, with energy weighted at 3 pts, valence at 2 pts, tempo at 1 pt, danceability at 1 pt, and acousticness at 0.5 pts. A perfect match on every attribute would total 15.5 pts. Every song in the catalogue is scored this way and the top k by total score are returned as recommendations.
 
-You can include a simple diagram or bullet list if helpful.
+This design has a few potential biases worth knowing about. Because mood and genre together account for 8 out of 15.5 possible points, songs that share both labels with the reference will almost always outrank songs that are a closer numerical match but belong to a different genre or mood. The mood cluster groupings are also hand-coded, so moods left out of a cluster (such as "gritty" or "nostalgic") are treated as total mismatches even when they may feel adjacent to a listener. Finally, the catalogue of 20 songs skews toward certain genres and moods, so some combinations will rarely or never appear in the top results regardless of the weights used.
+
+img: results.png
 
 ---
 
